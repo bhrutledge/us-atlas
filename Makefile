@@ -616,6 +616,27 @@ png/%.png: shp/%.shp bin/rasterize
 	node --max_old_space_size=8192 bin/rasterize $< $@
 	optipng $@
 
+
+STATES = al ak az ar ca co ct de dc fl ga hi id il in ia ks ky la me md ma mi \
+		 mn ms mo mt ne nv nh nj nm ny nc nd oh ok or pa ri sc sd tn tx ut vt \
+		 va wa wv wi wy
+
+.PHONY: us-state-counties-10m
+
+us-state-counties-10m:
+	for i in ${STATES} ; do make topo/us-$$i-counties-10m.json ; done
+
+# Per-state counties
+topo/us-%-counties-10m-ungrouped.json: shp/%/counties.shp
+	mkdir -p $(dir $@)
+	node_modules/.bin/topojson \
+		-o $@ \
+		--no-pre-quantization \
+		--post-quantization=1e6 \
+		--simplify=7e-7 \
+		--id-property=+FIPS \
+		-- $<
+
 topo/us-congress-10m-ungrouped.json: shp/us/congress-ungrouped.shp
 	mkdir -p $(dir $@)
 	node_modules/.bin/topojson \
