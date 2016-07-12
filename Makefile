@@ -307,6 +307,7 @@ shp/us/zipcodes-unmerged.shp shp/us/cbsa.shp shp/%/tracts.shp shp/%/blockgroups.
 	touch $@
 
 # TODO: Use STATE property from shapefile to reduce this to a single rule
+# OR, keep these and add state planes: http://bl.ocks.org/mbostock/9821217
 
 shp/al/states.shp: shp/us/states.shp
 	mkdir -p $(dir $@)
@@ -638,15 +639,15 @@ topo/_build/us-counties-10m-ungrouped.json: shp/us/counties.shp
 		--id-property=+FIPS \
 		-- $<
 
-# Per-state counties
-# TODO: Higher precision
-topo/_build/us-%-counties-10m-ungrouped.json: shp/%/counties.shp
+# TODO: Use --simplify instead of --simplify-proportion
+# TODO: Use --width and --height?
+topo/_build/us-%-counties-ungrouped.json: shp/%/counties.shp
 	mkdir -p $(dir $@)
 	node_modules/.bin/topojson \
 		-o $@ \
 		--no-pre-quantization \
 		--post-quantization=1e6 \
-		--simplify=7e-7 \
+		--simplify-proportion=.1 \
 		--id-property=+FIPS \
 		-- $<
 
@@ -679,7 +680,7 @@ topo/us-10m.json: topo/_build/us-states-10m.json
 		-- $<
 
 # Merge counties into individual states.
-topo/us-%-10m.json: topo/_build/us-%-counties-10m.json
+topo/us-%.json: topo/_build/us-%-counties.json
 	node_modules/.bin/topojson-merge \
 		-o $@ \
 		--in-object=counties \
@@ -687,11 +688,12 @@ topo/us-%-10m.json: topo/_build/us-%-counties-10m.json
 		--no-key \
 		-- $<
 
-STATES = al ak az ar ca co ct de dc fl ga hi id il in ia ks ky la me md ma mi \
+STATES = \
+		al ak az ar ca co ct de dc fl ga hi id il in ia ks ky la me md ma mi \
 		mn ms mo mt ne nv nh nj nm ny nc nd oh ok or pa ri sc sd tn tx ut vt \
 		va wa wv wi wy
 
-.PHONY: topo/state-10m
+.PHONY: topo/us-state-10m topo/us-state
 
-topo/us-state-10m:
-	for i in ${STATES} ; do make topo/us-$$i-10m.json ; done
+topo/us-state:
+	for i in ${STATES} ; do make topo/us-$$i.json ; done
