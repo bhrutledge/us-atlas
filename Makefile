@@ -616,27 +616,6 @@ png/%.png: shp/%.shp bin/rasterize
 	node --max_old_space_size=8192 bin/rasterize $< $@
 	optipng $@
 
-
-STATES = al ak az ar ca co ct de dc fl ga hi id il in ia ks ky la me md ma mi \
-		 mn ms mo mt ne nv nh nj nm ny nc nd oh ok or pa ri sc sd tn tx ut vt \
-		 va wa wv wi wy
-
-.PHONY: us-state-counties-10m
-
-us-state-counties-10m:
-	for i in ${STATES} ; do make topo/us-$$i-counties-10m.json ; done
-
-# Per-state counties
-topo/us-%-counties-10m-ungrouped.json: shp/%/counties.shp
-	mkdir -p $(dir $@)
-	node_modules/.bin/topojson \
-		-o $@ \
-		--no-pre-quantization \
-		--post-quantization=1e6 \
-		--simplify=7e-7 \
-		--id-property=+FIPS \
-		-- $<
-
 topo/us-congress-10m-ungrouped.json: shp/us/congress-ungrouped.shp
 	mkdir -p $(dir $@)
 	node_modules/.bin/topojson \
@@ -658,12 +637,12 @@ topo/us-counties-10m-ungrouped.json: shp/us/counties.shp
 		-- $<
 
 # Group polygons into multipolygons.
-topo/us-%-10m.json: topo/us-%-10m-ungrouped.json
+topo/%-10m.json: topo/%-10m-ungrouped.json
 	node_modules/.bin/topojson-group \
 		-o $@ \
-		-- topo/us-$*-10m-ungrouped.json
+		-- topo/$*-10m-ungrouped.json
 
-# Merge counties into states.
+# Merge all counties into states.
 topo/us-states-10m.json: topo/us-counties-10m.json
 	node_modules/.bin/topojson-merge \
 		-o $@ \
@@ -672,7 +651,7 @@ topo/us-states-10m.json: topo/us-counties-10m.json
 		--key='d.id / 1000 | 0' \
 		-- topo/us-counties-10m.json
 
-# Merge states into the nation (land).
+# Merge all states into the nation (land).
 topo/us-10m.json: topo/us-states-10m.json
 	node_modules/.bin/topojson-merge \
 		-o $@ \
@@ -680,3 +659,32 @@ topo/us-10m.json: topo/us-states-10m.json
 		--out-object=land \
 		--no-key \
 		-- topo/us-states-10m.json
+
+# Per-state counties
+topo/state-%-counties-10m-ungrouped.json: shp/%/counties.shp
+	mkdir -p $(dir $@)
+	node_modules/.bin/topojson \
+		-o $@ \
+		--no-pre-quantization \
+		--post-quantization=1e6 \
+		--simplify=7e-7 \
+		--id-property=+FIPS \
+		-- $<
+
+# Merge counties into individual states.
+topo/state-%-10m.json: topo/state-%-counties-10m.json
+	node_modules/.bin/topojson-merge \
+		-o $@ \
+		--in-object=counties \
+		--out-object=state \
+		--no-key \
+		-- $<
+
+STATES = al ak az ar ca co ct de dc fl ga hi id il in ia ks ky la me md ma mi \
+		mn ms mo mt ne nv nh nj nm ny nc nd oh ok or pa ri sc sd tn tx ut vt \
+		va wa wv wi wy
+
+.PHONY: topo/state-10m
+
+topo/state-10m:
+	for i in ${STATES} ; do make topo/state-$$i-10m.json ; done
