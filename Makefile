@@ -274,7 +274,7 @@ shp/us/counties.shp: shp/us/counties-unfiltered.shp
 	ogr2ogr -f 'ESRI Shapefile' -where "FIPS NOT LIKE '%000'" $@ $<
 
 # remove undefined congressional districts
-shp/us/congress-ungrouped.shp: shp/us/congress-unfiltered.shp
+shp/us/congress.shp: shp/us/congress-unfiltered.shp
 	rm -f $@
 	ogr2ogr -f 'ESRI Shapefile' -where "GEOID NOT LIKE '%ZZ'" $@ $<
 
@@ -305,6 +305,8 @@ shp/us/zipcodes-unmerged.shp shp/us/cbsa.shp shp/%/tracts.shp shp/%/blockgroups.
 	for file in $(basename $@)/*; do chmod 644 $$file; mv $$file $(basename $@).$${file##*.}; done
 	rmdir $(basename $@)
 	touch $@
+
+# TODO: Use STATE property from shapefile to reduce this to a single rule
 
 shp/al/states.shp: shp/us/states.shp
 	mkdir -p $(dir $@)
@@ -616,7 +618,7 @@ png/%.png: shp/%.shp bin/rasterize
 	node --max_old_space_size=8192 bin/rasterize $< $@
 	optipng $@
 
-topo/us-congress-10m-ungrouped.json: shp/us/congress-ungrouped.shp
+topo/_build/us-congress-10m-ungrouped.json: shp/us/congress.shp
 	mkdir -p $(dir $@)
 	node_modules/.bin/topojson \
 		-o $@ \
@@ -626,7 +628,19 @@ topo/us-congress-10m-ungrouped.json: shp/us/congress-ungrouped.shp
 		--id-property=+GEOID \
 		-- districts=$<
 
-topo/us-counties-10m-ungrouped.json: shp/us/counties.shp
+topo/_build/us-counties-10m-ungrouped.json: shp/us/counties.shp
+	mkdir -p $(dir $@)
+	node_modules/.bin/topojson \
+		-o $@ \
+		--no-pre-quantization \
+		--post-quantization=1e6 \
+		--simplify=7e-7 \
+		--id-property=+FIPS \
+		-- $<
+
+# Per-state counties
+# TODO: Higher precision
+topo/_build/us-%-counties-10m-ungrouped.json: shp/%/counties.shp
 	mkdir -p $(dir $@)
 	node_modules/.bin/topojson \
 		-o $@ \
@@ -637,42 +651,35 @@ topo/us-counties-10m-ungrouped.json: shp/us/counties.shp
 		-- $<
 
 # Group polygons into multipolygons.
-topo/%-10m.json: topo/%-10m-ungrouped.json
+# TODO: Use piping to avoid this intermediate step?
+topo/_build/%.json: topo/_build/%-ungrouped.json
 	node_modules/.bin/topojson-group \
 		-o $@ \
-		-- topo/$*-10m-ungrouped.json
+		-- $<
+
+topo/us-congress-10m.json: topo/_build/us-congress-10m.json
+	cp $< $@
 
 # Merge all counties into states.
-topo/us-states-10m.json: topo/us-counties-10m.json
+topo/_build/us-states-10m.json: topo/_build/us-counties-10m.json
 	node_modules/.bin/topojson-merge \
 		-o $@ \
 		--in-object=counties \
 		--out-object=states \
 		--key='d.id / 1000 | 0' \
-		-- topo/us-counties-10m.json
+		-- $<
 
 # Merge all states into the nation (land).
-topo/us-10m.json: topo/us-states-10m.json
+topo/us-10m.json: topo/_build/us-states-10m.json
 	node_modules/.bin/topojson-merge \
 		-o $@ \
 		--in-object=states \
 		--out-object=land \
 		--no-key \
-		-- topo/us-states-10m.json
-
-# Per-state counties
-topo/state-%-counties-10m-ungrouped.json: shp/%/counties.shp
-	mkdir -p $(dir $@)
-	node_modules/.bin/topojson \
-		-o $@ \
-		--no-pre-quantization \
-		--post-quantization=1e6 \
-		--simplify=7e-7 \
-		--id-property=+FIPS \
 		-- $<
 
 # Merge counties into individual states.
-topo/state-%-10m.json: topo/state-%-counties-10m.json
+topo/us-%-10m.json: topo/_build/us-%-counties-10m.json
 	node_modules/.bin/topojson-merge \
 		-o $@ \
 		--in-object=counties \
@@ -686,5 +693,5 @@ STATES = al ak az ar ca co ct de dc fl ga hi id il in ia ks ky la me md ma mi \
 
 .PHONY: topo/state-10m
 
-topo/state-10m:
-	for i in ${STATES} ; do make topo/state-$$i-10m.json ; done
+topo/us-state-10m:
+	for i in ${STATES} ; do make topo/us-$$i-10m.json ; done
