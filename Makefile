@@ -649,6 +649,7 @@ topo/_build/us-%-counties-ungrouped.json: shp/%/counties.shp
 		--post-quantization=1e6 \
 		--simplify-proportion=.1 \
 		--id-property=+FIPS \
+		--properties state=STATE,county=COUNTY \
 		-- $<
 
 # Group polygons into multipolygons.
@@ -685,7 +686,7 @@ topo/us-%.json: topo/_build/us-%-counties.json
 		-o $@ \
 		--in-object=counties \
 		--out-object=state \
-		--no-key \
+		--key='d.id / 1000 | 0' \
 		-- $<
 
 STATES = \
